@@ -1,0 +1,107 @@
+name: release
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        targets: ["win-x64", "linux-x64", "linux-arm", "linux-arm64"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 22.12.0
+
+      - name: Build with dotnet
+        run: |
+          dotnet publish TS3AudioBot -c Release --framework netcoreapp3.1 --self-contained --runtime ${{ matrix.targets }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TS3AudioBot_${{ matrix.targets }}
+          path: |
+            TS3AudioBot/bin/Release/netcoreapp3.1/${{ matrix.targets }}/publish
+
+  update-release-notes:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: extract-release-notes
+        uses: ffurrer2/extract-release-notes@v2
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ${{ steps.extract-release-notes.outputs.release_notes }}
+
+  upload-windows-to-release:
+    needs:
+      - build
+      - update-release-notes
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        targets: ["win-x64"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: TS3AudioBot_${{ matrix.targets }}
+          path: artifact
+
+      - run: |
+          cp CHANGELOG.md LICENSE README.md artifact/
+
+      - run: |
+          zip -r ../TS3AudioBot_${{ matrix.targets }}.zip *
+        working-directory: artifact
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            TS3AudioBot_${{ matrix.targets }}.zip
+  upload-linux-to-release:
+    needs:
+      - build
+      - update-release-notes
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        targets: ["linux-x64", "linux-arm", "linux-arm64"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: TS3AudioBot_${{ matrix.targets }}
+          path: artifact
+
+      - run: |
+          cp CHANGELOG.md LICENSE README.md artifact/
+
+      - run: |
+          tar -zcvf ../TS3AudioBot_${{ matrix.targets }}.tar.gz *
+        working-directory: artifact
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            TS3AudioBot_${{ matrix.targets }}.tar.gz
